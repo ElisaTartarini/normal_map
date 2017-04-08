@@ -1,0 +1,10 @@
+*.opendb
+*.db
+x64/
+build
+*.suo
+Debug/
+Release/
+*.user
+*.jpg
+*.png
