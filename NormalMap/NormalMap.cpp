@@ -12,8 +12,11 @@
 	Z:  0 to -1 :  Blue: 128 to 255
 ****************************************************************************/
 
-#include "stdafx.h"
-#include <opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include <iostream>
 
 using namespace cv;
 
@@ -37,10 +40,17 @@ void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, int strength);
 void recomputeNormals(int, void*);
 void recomputeBlurAndNormals(int, void*);
 
-int _tmain(int argc, _TCHAR* argv[])
+int main(int argc, char* argv[])
 {
+        if(argc <= 1)
+        {
+            std::cout << "Usage: %s [image-filename]" << argv[0] << std::endl;
+            return -1;
+        }
+        std::string filename = argv[1];
+    
 	// Parameters
-	std::string filename = "../images/rocks.jpg";			// Input image filename
+	//std::string filename = "../images/rocks.jpg";			// Input image filename
 	//std::string filename = "../images/sphere.png";		// Input image filename
 	//std::string filename = "../images/sphere2.jpg";		// Input image filename
 	int strength = 300;									// Normal Z component intensity
@@ -55,6 +65,10 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	// Read input image and show it
 	source = imread(filename);
+        if(source.empty())
+        {
+            std::cout << "Invalid image file: %s" << filename << std::endl;
+        }
 	imshow("input", source);
 
 	// Create result image
@@ -62,6 +76,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	// Prepare result windows
 	namedWindow(resultWin, CV_WINDOW_NORMAL);
+        std::cout << "Press a key to exit..." << std::endl;
 
 	// Fill userdata and create trackbars
 	TrackbarCallbackData data;
@@ -86,9 +101,9 @@ int _tmain(int argc, _TCHAR* argv[])
 	// Compute Sobel images
 	Sobel(blurred, xSobel, CV_32FC1, 1, 0, 5);
 	Sobel(blurred, ySobel, CV_32FC1, 0, 1, 5);
-	double minS, maxS;
 
 	// Convert Sobel images in a viewable format and show them
+	//double minS, maxS;
 	//minMaxLoc(xSobel, &minS, &maxS);
 	//xSobel.convertTo(xSobel_8, CV_8UC1, 255. / (maxS - minS), -minS * 255 / (maxS - minS));
 	//minMaxLoc(ySobel, &minS, &maxS);
@@ -99,12 +114,16 @@ int _tmain(int argc, _TCHAR* argv[])
 	// Compute normal vector and store it in the normal map	
 	computeNormals(xSobel, ySobel, dest, strength);
 
-	// Show and save norm map image
+	// Show norm map image
 	imshow(resultWin, dest);
-	imwrite("../images/normals.png", dest);
 
 	waitKey(-1);
 
+	// Save norm map image
+        std::string outFile = filename.substr(0,filename.find_last_of('/')+1)+"normals.png";
+	imwrite(outFile, dest);
+        std::cout << "Result written to: " << outFile << std::endl;
+        
 	source.release();
 	source_gray.release();
 	blurred.release();
@@ -146,8 +165,8 @@ void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, int strength)
 		for (int c = 0; c < xSobel.cols; c++, xSobel_row++, ySobel_row++, dest_row++)
 		{
 			// Fill norm vector
-			norm[0] = *xSobel_row;
-			norm[1] = -*ySobel_row;
+			norm[0] = -*xSobel_row;
+			norm[1] = *ySobel_row;
 			norm[2] = (float)strength;
 
 			// Normalize norm vector in range [0,1]
@@ -192,8 +211,8 @@ void recomputeBlurAndNormals(int, void* data_)
 	Mat blurred;
 
 	// Avoid exceptions
-	if (*data->blurSize == 0)
-		*data->blurSize++;
+	if (*data->blurSize % 2 == 0)
+		(*data->blurSize)++;
 	
 	// Blur input image
 	GaussianBlur(*data->source, blurred, Size(*data->blurSize, *data->blurSize), data->gaussSigma);
