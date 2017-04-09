@@ -17,7 +17,25 @@
 
 using namespace cv;
 
-void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, float strength, int blurSize, float gaussSigma);
+/**
+ * User data to pass to trackbar callback functions
+ */
+struct TrackbarCallbackData {
+	Mat* source;
+	Mat* xSobel;
+	Mat* ySobel;
+	Mat* normals;
+	int* strength;
+	int* blurSize;
+	float gaussSigma;
+	std::string outWin;
+};
+
+void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, int strength);
+
+// Trackbar callbacks
+void recomputeNormals(int, void*);
+void recomputeBlurAndNormals(int, void*);
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -25,46 +43,64 @@ int _tmain(int argc, _TCHAR* argv[])
 	std::string filename = "../images/rocks.jpg";			// Input image filename
 	//std::string filename = "../images/sphere.png";		// Input image filename
 	//std::string filename = "../images/sphere2.jpg";		// Input image filename
-	float strength = 30;									// Normal Z component intensity
-	int blurSize = 7;										// Kernel size for Gaussian blur
+	int strength = 300;									// Normal Z component intensity
+	int blurSize = 31;										// Kernel size for Gaussian blur
 	float gaussSigma = 0;									// Sigma parameter for Gaussian blur (0 means automatically calculated fro kernel size
 
+	std::string resultWin = "Normals";
+	Mat source, source_gray, blurred;
+	Mat xSobel, ySobel;
+	//Mat xSobel_8, ySobel_8;
+	Mat dest;
+
 	// Read input image and show it
-	cv::Mat source;
 	source = imread(filename);
 	imshow("input", source);
 
+	// Create result image
+	dest.create(source.size(), CV_8UC3);
+
+	// Prepare result windows
+	namedWindow(resultWin, CV_WINDOW_NORMAL);
+
+	// Fill userdata and create trackbars
+	TrackbarCallbackData data;
+	data.source = &source_gray;
+	data.xSobel = &xSobel;
+	data.ySobel = &ySobel;
+	data.normals = &dest;
+	data.strength = &strength;
+	data.blurSize = &blurSize;
+	data.gaussSigma = gaussSigma;
+	data.outWin = resultWin;
+	createTrackbar("Depth strength", resultWin, &strength, 1000, recomputeNormals, &data);
+	createTrackbar("Blur kernel", resultWin, &blurSize, 60, recomputeBlurAndNormals, &data);
+
 	// Transform image to grayscale
-	Mat source_gray;
 	cvtColor(source, source_gray, CV_BGR2GRAY);
 
 	// Blur input image
-	Mat blurred;
 	GaussianBlur(source_gray, blurred, Size(blurSize, blurSize), gaussSigma);
-	imshow("blurred", blurred);
+	//imshow("blurred", blurred);
 
 	// Compute Sobel images
-	Mat xSobel, ySobel;
 	Sobel(blurred, xSobel, CV_32FC1, 1, 0, 5);
 	Sobel(blurred, ySobel, CV_32FC1, 0, 1, 5);
 	double minS, maxS;
 
 	// Convert Sobel images in a viewable format and show them
-	Mat xSobel_8, ySobel_8;
-	minMaxLoc(xSobel, &minS, &maxS);
-	xSobel.convertTo(xSobel_8, CV_8UC1, 255. / (maxS - minS), -minS * 255 / (maxS - minS));
-	minMaxLoc(ySobel, &minS, &maxS);
-	ySobel.convertTo(ySobel_8, CV_8UC1, 255. / (maxS - minS), -minS * 255 / (maxS - minS));
-	imshow("xSobel", xSobel_8);
-	imshow("ySobel", ySobel_8);
+	//minMaxLoc(xSobel, &minS, &maxS);
+	//xSobel.convertTo(xSobel_8, CV_8UC1, 255. / (maxS - minS), -minS * 255 / (maxS - minS));
+	//minMaxLoc(ySobel, &minS, &maxS);
+	//ySobel.convertTo(ySobel_8, CV_8UC1, 255. / (maxS - minS), -minS * 255 / (maxS - minS));
+	//imshow("xSobel", xSobel_8);
+	//imshow("ySobel", ySobel_8);
 
-	// Compute normal vector and store it in the normal map
-	Mat dest(source.size(), CV_8UC3);
-	
-	computeNormals(xSobel, ySobel, dest, strength, blurSize, gaussSigma);
+	// Compute normal vector and store it in the normal map	
+	computeNormals(xSobel, ySobel, dest, strength);
 
 	// Show and save norm map image
-	imshow("dest", dest);
+	imshow(resultWin, dest);
 	imwrite("../images/normals.png", dest);
 
 	waitKey(-1);
@@ -74,15 +110,17 @@ int _tmain(int argc, _TCHAR* argv[])
 	blurred.release();
 	xSobel.release();
 	ySobel.release();
-	xSobel_8.release();
-	ySobel_8.release();
+	//xSobel_8.release();
+	//ySobel_8.release();
 	dest.release();
 
 	return 0;
 }
 
-
-void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, float strength, int blurSize, float gaussSigma)
+/**
+ * Compute normal map given x-Sobel and y-Sobel derivatives and z strength
+ */
+void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, int strength)
 {
 	assert(xSobel.size() == ySobel.size()
 		&& xSobel.size() == normals.size()
@@ -110,7 +148,7 @@ void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, float strength, int 
 			// Fill norm vector
 			norm[0] = *xSobel_row;
 			norm[1] = -*ySobel_row;
-			norm[2] = strength;
+			norm[2] = (float)strength;
 
 			// Normalize norm vector in range [0,1]
 			cv::normalize(norm, norm, 1, NORM_L2);
@@ -128,4 +166,47 @@ void computeNormals(Mat &xSobel, Mat &ySobel, Mat& normals, float strength, int 
 	// Convert image format from BGR to RGB
 	cvtColor(normals, normals, CV_BGR2RGB);
 
+}
+
+/**
+* Re-compute normal map using new data updated in user data param
+*/
+void recomputeNormals(int, void* data_)
+{
+	TrackbarCallbackData* data = (TrackbarCallbackData*)data_;
+
+	// Compute normal vector and store it in the normal map	
+	computeNormals(*data->xSobel, *data->ySobel, *data->normals, *data->strength);
+
+	// Update normals window
+	imshow(data->outWin, *data->normals);
+}
+
+/**
+* Re-compute Gaussian blur of input image, Sobel derivatives and normal map using new data updated in user data param
+*/
+void recomputeBlurAndNormals(int, void* data_)
+{
+	TrackbarCallbackData* data = (TrackbarCallbackData*)data_;
+
+	Mat blurred;
+
+	// Avoid exceptions
+	if (*data->blurSize == 0)
+		*data->blurSize++;
+	
+	// Blur input image
+	GaussianBlur(*data->source, blurred, Size(*data->blurSize, *data->blurSize), data->gaussSigma);
+
+	// Compute Sobel images
+	Sobel(blurred, *data->xSobel, CV_32FC1, 1, 0, 5);
+	Sobel(blurred, *data->ySobel, CV_32FC1, 0, 1, 5);
+
+	// Compute normal vector and store it in the normal map	
+	computeNormals(*data->xSobel, *data->ySobel, *data->normals, *data->strength);
+
+	// Update normals window
+	imshow(data->outWin, *data->normals);
+
+	blurred.release();
 }
